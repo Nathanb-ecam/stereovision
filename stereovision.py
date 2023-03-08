@@ -80,7 +80,7 @@ ret, mtxL, distL, mtxR, distR, R, T, E, F = cv2.stereoCalibrate(objpoints,imgpoi
 
 
 
-print("F amene")
+print("Fundamental")
 print(F)
 
     
