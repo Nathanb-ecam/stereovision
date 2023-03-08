@@ -17,40 +17,72 @@ from numpy.linalg import inv
 import cv2 
 import glob
 
-def calibration():
+# Loading the chessboard images
+chessboardRight = glob.glob('chessboards/c*Right.png')
+chessboardLeft = glob.glob('chessboards/c*Left.png')
+
+# Loading the scan images
+scanRight = glob.glob('scanRight/*.png')
+scanLeft = glob.glob('scanLeft/*.png')
+
+
+
+"""Calibration of left and right chessboard images in respect to a chessboard positionned straight"""
     # termination criteria
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-    objp = np.zeros((7*7,3), np.float32)
-    objp[:,:2] = np.mgrid[0:7,0:7].T.reshape(-1,2)
-    # Arrays to store object points and image points from all the images.
-    objpoints = [] # 3d point in real world space
-    imgpoints = [] # 2d points in image plane.
-    images = glob.glob('./chessboards/*.png')
-    for fname in images:
-        img = cv2.imread(fname)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # Find the chess board corners
-        ret, corners = cv2.findChessboardCorners(gray, (7,7), None)
-        # If found, add object points, image points (after refining them)
-        if ret == True:
-            objpoints.append(objp)
-            corners2 = cv2.cornerSubPix(gray,corners, (7,7), (-1,-1), criteria)
-            # print(corners2)
-            imgpoints.append(corners2)
-            # Draw and display the corners
-            cv2.drawChessboardCorners(img, (7,7), corners2, ret)
-            # cv2.imshow('img', img)
-            # cv2.waitKey(500)
-            # print(fname)
-            
-    cv2.destroyAllWindows()
-    ret, cameraMatrix, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-    # print("revcs")
-    # print(rvecs[0])
- 
-    return ret,cameraMatrix,dist,rvecs,tvecs
-# la paire d'image 3 du chessboard n'est pas prise en compte 
+criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+# prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
+objp = np.zeros((7*7,3), np.float32)
+objp[:,:2] = np.mgrid[0:7,0:7].T.reshape(-1,2)
+# Arrays to store object points and image points from all the images.
+objpoints = [] # 3d point in real world space
+imgpointsL = [] # 2d points in image plane.
+imgpointsR = [] # 2d points in image plane.
+
+grayShape = cv2.cvtColor(cv2.imread(chessboardRight[0]), cv2.COLOR_BGR2GRAY).shape[::-1]
+
+
+# calibrating left images 
+for image in chessboardLeft:
+    img = cv2.imread(image)
+    grayL = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Find the chess board corners
+    ret, corners = cv2.findChessboardCorners(grayL, (7,7), None)
+    # If found, add object points, image points (after refining them)
+    if ret == True:
+        objpoints.append(objp)
+        corners = cv2.cornerSubPix(grayL,corners, (11,11), (-1,-1), criteria)
+        imgpointsL.append(corners)
+        # cv2.drawChessboardCorners(img, (7,7), corners, ret)
+
+
+# calibrating right images 
+for image in chessboardRight:
+    img = cv2.imread(image)
+    grayR = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Find the chess board corners
+    ret, corners = cv2.findChessboardCorners(grayR, (7,7), None)
+    # If found, add object points, image points (after refining them)
+    if ret == True:
+        corners = cv2.cornerSubPix(grayR, corners, (11,11), (-1,-1), criteria)
+        imgpointsR.append(corners)
+        cv2.drawChessboardCorners(img, (7,7), corners, ret)
+
+
+        
+# cv2.destroyAllWindows()
+ret, mtxL, distL, rvecsL, tvecsL = cv2.calibrateCamera(objpoints, imgpointsL, grayShape, None, None)
+ret, mtxR, distR, rvecsR, tvecsR = cv2.calibrateCamera(objpoints, imgpointsR, grayShape, None, None)
+
+
+
+ret, mtxL, distL, mtxR, distR, R, T, E, F = cv2.stereoCalibrate(objpoints,imgpointsR,imgpointsL,mtxR,distR,mtxL,distL,grayShape)
+
+
+
+
+print("F amene")
+print(F)
+
     
 """
 _________________________________________________________________________FINDING FUNDAMENTAL MATRIX_________________________________________________________________________
@@ -62,76 +94,76 @@ rvecs : est un tuple d'array qui contient les composantes rotationnelles
 tvecs : idem mais pour translation
 """
 
-ret,cameraMatrix,dist,rvecs,tvecs = calibration()
+# ret,cameraMatrix,dist,rvecs,tvecs = calibration()
 
 
 # pour i = 0,2,4 on a la matrice de projection de la camera de gauche (suite à l'ordre dans lequel les photos sont parcourues dans la calibration)
 # pour i = 1,3,5 on a la matrice de projection de la camera de droite
 
-def get_projection_matrix(i):
-    R = cv2.Rodrigues(rvecs[i])[0]
-    t = tvecs[i]
-    Rt = np.concatenate([R,t], axis=-1) # [R|t] -> matrice de rotation
-    P = np.matmul(cameraMatrix,Rt) # A[R|t]
-    return P
+# def get_projection_matrix(i):
+#     R = cv2.Rodrigues(rvecs[i])[0]
+#     t = tvecs[i]
+#     Rt = np.concatenate([R,t], axis=-1) # [R|t] -> matrice de rotation
+#     P = np.matmul(cameraMatrix,Rt) # A[R|t]
+#     return P
 
-def get_camera_centre_matrix(i): # centre optique d'une camera
-    R = cv2.Rodrigues(rvecs[i])[0]
-    t = tvecs[i]
-    C = -R@t # est une 3x1, on ajoute une quatrième composante qu'on fixe à 1 pour une caméra centrée dans le repère world
-    C = np.vstack([C,np.array([1])])
-    return C
+# def get_camera_centre_matrix(i): # centre optique d'une camera
+#     R = cv2.Rodrigues(rvecs[i])[0]
+#     t = tvecs[i]
+#     C = -R@t # est une 3x1, on ajoute une quatrième composante qu'on fixe à 1 pour une caméra centrée dans le repère world
+#     C = np.vstack([C,np.array([1])])
+#     return C
 
-#Create a dictionnary containning all interesting matrixes
+# #Create a dictionnary containning all interesting matrixes
    
-matrixes = dict()
-matrixes['K'] = cameraMatrix
-matrixes['rvecs'] = rvecs
-matrixes['tvecs'] = tvecs
+# matrixes = dict()
+# matrixes['K'] = cameraMatrix
+# matrixes['rvecs'] = rvecs
+# matrixes['tvecs'] = tvecs
 
-matrixes['P'],matrixes['C']= get_projection_matrix(0),get_camera_centre_matrix(1)
-matrixes["P'"],matrixes["C'"]= get_projection_matrix(1),get_camera_centre_matrix(0)
-matrixes["PseudoP"] = np.linalg.pinv(matrixes['P'])
+# matrixes['P'],matrixes['C']= get_projection_matrix(0),get_camera_centre_matrix(1)
+# matrixes["P'"],matrixes["C'"]= get_projection_matrix(1),get_camera_centre_matrix(0)
+# matrixes["PseudoP"] = np.linalg.pinv(matrixes['P'])
 
-# here we are only considerating the first set of 2 pictures
-# print(get_projection_matrix(0))
-# print()
-# print(get_projection_matrix(1))
-# print()
-# print(get_projection_matrix(2))
-# print()
-# print(get_projection_matrix(3))
+# # here we are only considerating the first set of 2 pictures
+# # print(get_projection_matrix(0))
+# # print()
+# # print(get_projection_matrix(1))
+# # print()
+# # print(get_projection_matrix(2))
+# # print()
+# # print(get_projection_matrix(3))
 
-# # print(get_camera_centre_matrix(1))
-# # print(get_camera_centre_matrix(0))
-def crossMat(vec):# doit retourner
-    x,y,z = vec
-    M = np.array([[0,-z[0],y[0]],
-                  [z[0],0,-x[0]],
-                  [-y[0],x[0],0]])
-    return M
-
-
-#Compute first factor for Fundamental matrix
-
-First = matrixes["P'"] @ matrixes['C']
-First = crossMat(First)
-
-#Compute second factor for Fundamental matrix
-
-Second = matrixes["P'"]@ matrixes['PseudoP']
-
-#Matrice Fondamentale
-
-print("Fundamental")
-F = First @ Second
-print(F)
+# # # print(get_camera_centre_matrix(1))
+# # # print(get_camera_centre_matrix(0))
+# def crossMat(vec):# doit retourner
+#     x,y,z = vec
+#     M = np.array([[0,-z[0],y[0]],
+#                   [z[0],0,-x[0]],
+#                   [-y[0],x[0],0]])
+#     return M
 
 
-# # F = [P'C]x  P'  P+
-# #     3x4 4x1 3x4 4x3
+# #Compute first factor for Fundamental matrix
+
+# First = matrixes["P'"] @ matrixes['C']
+# First = crossMat(First)
+
+# #Compute second factor for Fundamental matrix
+
+# Second = matrixes["P'"]@ matrixes['PseudoP']
+
+# #Matrice Fondamentale
+
+# print("Fundamental")
+# # F = First @ Second
+# print(F)
+
+
+# # # F = [P'C]x  P'  P+
+# # #     3x4 4x1 3x4 4x3
  
-# #on a que l = F . x (l = ligne épipolaire, et x coordonnée du point image issue d'une image Left ou Right)
+# # #on a que l = F . x (l = ligne épipolaire, et x coordonnée du point image issue d'une image Left ou Right)
 
 
     
